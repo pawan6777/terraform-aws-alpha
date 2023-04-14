@@ -1,55 +1,124 @@
-provider "aws" {      #making resources in Singapore
-  region  = "ap-southeast-1"
-}
-
-resource "aws_key_pair" "key_pair" {
-  key_name = "mynewkeypair"
-  public_key = "${file("/home/pawan/.ssh/id_rsa.pub")}"
-  
-}
-
-resource "aws_instance" "web_server" {      #making a free-tier ubuntu vm
-  ami           = "ami-0a72af05d27b49ccb"
-  instance_type = "t2.micro"
-  key_name      = "mynewkeypair"  
+# Create a VPC
+resource "aws_vpc" "main" {
+  cidr_block = "10.0.0.0/16"
 
   tags = {
-    Name = "WebServerInstance"
-  }
-
-  vpc_security_group_ids = [aws_security_group.web_server_sg.id]
-}
-
-#adding firewall/security_group rules for ssh,http and outgoing traffic
-resource "aws_security_group" "web_server_sg" {    
-  name_prefix = "web_server_sg"
-
-  ingress {
-    from_port = 22
-    to_port   = 22
-    protocol  = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port = 80
-    to_port   = 80
-    protocol  = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    Name = "main"
   }
 }
 
-data "aws_instance" "web_server_data" {
-  instance_id = aws_instance.web_server.id
+resource "aws_subnet" "public1" {
+  vpc_id     = aws_vpc.main.id
+  cidr_block = "10.0.1.0/24"
+  availability_zone = "ap-southeast-1a"
+
+  tags = {
+    Name = "public1"
+  }
 }
 
-output "public_ip" {    #displaying the public ip of the server on terminal
-  value = data.aws_instance.web_server_data.public_ip
+resource "aws_subnet" "public2" {
+  vpc_id     = aws_vpc.main.id
+  cidr_block = "10.0.2.0/24"
+  availability_zone = "ap-southeast-1b"
+
+  tags = {
+    Name = "public2"
+  }
+}
+
+resource "aws_subnet" "private1" {
+  vpc_id     = aws_vpc.main.id
+  cidr_block = "10.0.3.0/24"
+  availability_zone = "ap-southeast-1a"
+
+  tags = {
+    Name = "private1"
+  }
+}
+
+resource "aws_subnet" "private2" {
+  vpc_id     = aws_vpc.main.id
+  cidr_block = "10.0.4.0/24"
+  availability_zone = "ap-southeast-1b"
+
+  tags = {
+    Name = "private2"
+  }
+}
+
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "main"
+  }
+}
+
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    gateway_id = aws_internet_gateway.main.id
+    cidr_block = "0.0.0.0/0"
+  }
+}
+
+resource "aws_route_table_association" "public1" {
+  subnet_id      = aws_subnet.public1.id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_route_table_association" "public2" {
+  subnet_id      = aws_subnet.public2.id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_eip" "nat1" {
+  # instance = aws_instance.web.id
+  vpc      = true
+}
+
+resource "aws_eip" "nat2" {
+  # instance = aws_instance.web.id
+  vpc      = true
+}
+
+resource "aws_nat_gateway" "nat1" {
+  allocation_id = aws_eip.nat1.id
+  subnet_id     = aws_subnet.public1.id
+}
+
+resource "aws_nat_gateway" "nat2" {
+  allocation_id = aws_eip.nat2.id
+  subnet_id     = aws_subnet.public2.id
+}
+
+resource "aws_route_table" "private1" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+      cidr_block = "0.0.0.0/0"
+      nat_gateway_id = aws_nat_gateway.nat1.id
+  }
+}
+
+resource "aws_route_table_association" "private1" {
+  subnet_id      = aws_subnet.private1.id
+  route_table_id = aws_route_table.private1.id
+}
+
+resource "aws_route_table" "private2" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+      cidr_block = "0.0.0.0/0"
+      nat_gateway_id = aws_nat_gateway.nat2.id
+  }
+}
+
+resource "aws_route_table_association" "private2" {
+  subnet_id      = aws_subnet.private2.id
+  route_table_id = aws_route_table.private2.id
 }
